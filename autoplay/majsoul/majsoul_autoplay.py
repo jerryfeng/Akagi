@@ -25,7 +25,9 @@ VALID_ACTIONS = [
     "daiminkan",
     "kakan",
     "ankan",
-    "none"
+    "none",
+    "reach",
+    "hora"
 ]
 
 def grab_region(region):
@@ -76,7 +78,7 @@ def click_button(window, template_path):
     if not boxes:
         time.sleep(2)
         frame = grab_region(region)
-        boxes = find_template_all(frame, template, threshold=0.90)
+        boxes = find_template_all(frame, template, threshold=0.80)
 
     if boxes:
         x1, y1, x2, y2 = boxes[0]
@@ -89,9 +91,13 @@ def click_button(window, template_path):
         pyautogui.moveTo(xc, yc, duration=1)
         time.sleep(0.5)
         pyautogui.click()
+        time.sleep(0.5)
+        xmid = (left + right) / 2
+        ymid = (top + bottom) / 2
+        pyautogui.moveTo(xmid, ymid, duration=1)
         return True
     else:
-        raise f"template image not found in window"
+        return False
 
 
 def find_template_all(frame, template, threshold=0.88):
@@ -140,8 +146,15 @@ class MajsoulAutoPlay():
         if action not in VALID_ACTIONS:
             return False
         try:
+            if action in ["daiminkan", "kakan", "ankan"]:
+                action = "kan"
             template_path = BASE_DIR / "assets" / "actions" / f"{action}.png"
-            return click_button(window, template_path)
+            success = click_button(window, template_path)
+            if not success and action == "hora":
+                # tsumo is a different button...
+                template_path = BASE_DIR / "assets" / "actions" / "hora2.png"
+                success = click_button(window, template_path)
+            return success
         except Exception as e:
             logger.error(f"Failed to click action {action}: ", e)
             return False

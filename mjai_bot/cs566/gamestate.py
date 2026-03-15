@@ -32,6 +32,9 @@ def pai_to_idx(pai: str) -> int:
     """
     if pai in HONOR_TO_IDX:
         return HONOR_TO_IDX[pai]
+    
+    if len(pai) == 3 and pai[2] == 'r':
+        pai = pai[:2]
 
     if len(pai) != 2:
         raise ValueError(f"Invalid pai: {pai}")

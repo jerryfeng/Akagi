@@ -4,7 +4,7 @@
         "host": "127.0.0.1",
         "port": 7880
     },
-    "model": "cs566",
+    "model": "mortal",
     "theme": "textual-dark",
     "ot_server": {
         "server": "http://127.0.0.1:5000",
