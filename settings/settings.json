@@ -4,14 +4,14 @@
         "host": "127.0.0.1",
         "port": 7880
     },
-    "model": "mortal",
+    "model": "cs566",
     "theme": "textual-dark",
     "ot_server": {
         "server": "http://127.0.0.1:5000",
         "online": false,
         "api_key": "your_api_key"
     },
-    "autoplay": false,
+    "autoplay": true,
     "auto_switch_model": true,
     "autoplay_time": {
         "first_tile": 5.0,

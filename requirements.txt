@@ -12,3 +12,10 @@ protobuf==5.29.3
 # PyTorch
 torch==2.5.1
 numpy==2.1.2
+
+# autoplay
+pyautogui=0.9.54
+pillow=12.1.1
+pywin32=311
+opencv-python=4.13.0.92
+mss=10.1.0

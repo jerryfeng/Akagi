@@ -1,17 +1,24 @@
+from autoplay.majsoul.majsoul_autoplay import MajsoulAutoPlay
+
 from .logger import logger
 from settings.settings import settings, MITMType
+import win32gui
+import win32con
+from .window import WindowObject
     
 class AutoPlay(object):
     def __init__(self):
-        pass
+        self.bot = None
+        self.autoplay_instance = None
+        self._target_window: WindowObject = None
         
     @property
-    def target_window(self) -> None:
+    def target_window(self) -> WindowObject:
         """
         Returns the target window object.
         The target window is the first visible window in the list of windows.
         """
-        return None
+        return self._target_window
 
     def set_bot(self, bot):
         """
@@ -21,7 +28,7 @@ class AutoPlay(object):
         Returns:
             None: No return value.
         """
-        pass
+        self.bot = bot
 
     def set_autoplay(self):
         """
@@ -35,7 +42,7 @@ class AutoPlay(object):
             case MITMType.AMATSUKI:
                 return
             case MITMType.MAJSOUL:
-                return
+                self.autoplay_instance = MajsoulAutoPlay()
             case MITMType.RIICHI_CITY:
                 return
             case MITMType.TENHOU:
@@ -46,31 +53,63 @@ class AutoPlay(object):
                 logger.error(f"Unknown MITM type: {settings.mitm.type}")
                 return
 
-    def get_windows(self) -> list:
+    def get_windows(self) -> list[WindowObject]:
         """
         Returns a list of WindowObject instances for all visible windows.
         Each WindowObject contains the window handle (hwnd) and window name.
         """
-        return []
+        windows = []
+        def enum_callback(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd):
+                name = win32gui.GetWindowText(hwnd)
+                if name:  # skip empty titles
+                    windows.append(WindowObject(hwnd, name))
+
+        win32gui.EnumWindows(enum_callback, None)
+        return windows
     
     def select_window(self, hwnd: int) -> None:
         """
         Selects a window by its handle (hwnd).
         """
-        pass
+        # restore if minimized
+        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        
+        # bring to foreground
+        win32gui.SetForegroundWindow(hwnd)
 
+        name = win32gui.GetWindowText(hwnd)
+        self._target_window = WindowObject(hwnd, name)
+    
     def check_window(self) -> bool:
         """
         Checks if the target window is valid and visible.
         Returns True if the target window is valid, False otherwise.
         """
-        return False
+        if self.autoplay_instance is None:
+            return False
+        
+        if self.target_window is None:
+            return False
+        
+        # window must be visible
+        if not win32gui.IsWindowVisible(self.target_window.hwnd):
+            return False
+
+        # window must not be minimized
+        if win32gui.IsIconic(self.target_window.hwnd):
+            return False
+
+        return self.autoplay_instance.check_window(self._target_window)
     
-    def auto_select_window(self) -> None:
+    def auto_select_window(self) -> WindowObject:
         """
         Automatically selects the window based on the current settings.
         """
-        pass
+        if self.autoplay_instance is None:
+            return
+        self._target_window = self.autoplay_instance.auto_select_window(self.get_windows())
+        return self.target_window
 
     def act(self, mjai_msg: dict) -> bool:
         """
@@ -82,4 +121,15 @@ class AutoPlay(object):
         Returns:
             bool: True if the action was performed, False otherwise.
         """
-        pass
+        if self.autoplay_instance is None:
+            return False
+        if not self.check_window():
+            self.auto_select_window()
+            if not self.check_window():
+                return False
+        if mjai_msg["type"] == "dahai":
+            return self.autoplay_instance.click_discard(self.target_window, mjai_msg["pai"])
+        elif mjai_msg["type"] in ["chi", "pon", "none", "daiminkan", "kakan", "ankan"]:
+            return self.autoplay_instance.click_action(self.target_window, mjai_msg["type"])
+
+        return False

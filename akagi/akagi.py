@@ -1080,6 +1080,7 @@ class AkagiApp(App):
         global settings, autoplay, mitm_client
         if settings.autoplay:
             window = autoplay.auto_select_window()
+            logger.debug(f"Autoplay window: {window}")
             if window is not None:
                 logger.info(f"Autoplay window found: {window.name}")
                 self.app.notify(
