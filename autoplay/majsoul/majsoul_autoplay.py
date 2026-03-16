@@ -61,7 +61,7 @@ def group_points(points, distance=12):
             groups.append([float(x), float(y), 1])
     return [(int(gx), int(gy)) for gx, gy, _ in groups]
 
-def click_button(window, template_path):
+def click_button(window, template):
     # Sleep random amount of time so that we look slightly less like a bot
     time.sleep(random.uniform(0.0, 3.0))
 
@@ -69,7 +69,6 @@ def click_button(window, template_path):
     region = {"top": top, "left": left, "width": right - left, "height": bottom - top}
     frame = grab_region(region)
 
-    template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
     boxes = find_template_all(frame, template, threshold=0.90)
     # logger.debug(boxes)
     
@@ -99,6 +98,41 @@ def click_button(window, template_path):
     else:
         return False
 
+def resize_template(img, scale=0.7):
+    h, w = img.shape[:2]
+    new_w = max(1, int(round(w * scale)))
+    new_h = max(1, int(round(h * scale)))
+    return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+def merge_templates_horiz(img_a, img_b, gap=0):
+    h = max(img_a.shape[0], img_b.shape[0])
+
+    def pad_to_h(img):
+        pad_bottom = h - img.shape[0]
+        return cv2.copyMakeBorder(
+            img, 0, pad_bottom, 0, 0,
+            borderType=cv2.BORDER_CONSTANT,
+            value=0
+        )
+
+    img_a = pad_to_h(img_a)
+    img_b = pad_to_h(img_b)
+
+    parts = [img_a]
+    if gap > 0:
+        spacer = np.zeros((h, gap, img_a.shape[2]), dtype=img_a.dtype)
+        parts.append(spacer)
+    parts.append(img_b)
+
+    return np.hstack(parts)
+
+def merge_chi_pairs(template1_path, template2_path):
+    template1 = cv2.imread(str(template1_path), cv2.IMREAD_COLOR)
+    template2 = cv2.imread(str(template2_path), cv2.IMREAD_COLOR)
+    template1_small = resize_template(template1, 0.7)
+    template2_small = resize_template(template2, 0.7)
+    merged = merge_templates_horiz(template1_small, template2_small, gap=2)
+    return merged
 
 def find_template_all(frame, template, threshold=0.88):
     """
@@ -132,28 +166,38 @@ class MajsoulAutoPlay():
                 return window
         return None
 
-    def click_discard(self, window: WindowObject, pai):
+    def click_discard(self, window: WindowObject, mjai_msg):
+        pai = mjai_msg["pai"]
         if pai not in VALID_PAI:
             return False
         try:
             template_path = BASE_DIR / "assets" / "pais" / f"{pai}.png"
-            return click_button(window, template_path)
+            template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+            return click_button(window, template)
         except Exception as e:
             logger.error(f"Failed to click discard {pai}: ", e)
             return False
     
-    def click_action(self, window: WindowObject, action):
+    def click_action(self, window: WindowObject, mjai_msg):
+        action = mjai_msg["action"]
         if action not in VALID_ACTIONS:
             return False
         try:
             if action in ["daiminkan", "kakan", "ankan"]:
                 action = "kan"
             template_path = BASE_DIR / "assets" / "actions" / f"{action}.png"
-            success = click_button(window, template_path)
+            template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+            success = click_button(window, template)
             if not success and action == "hora":
                 # tsumo is a different button...
                 template_path = BASE_DIR / "assets" / "actions" / "hora2.png"
-                success = click_button(window, template_path)
+                template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+                success = click_button(window, template)
+            if success and action == "chi":
+                consumed = mjai_msg["consumed"]
+                template_path1 = BASE_DIR / "assets" / "pais" / f"{consumed[0]}.png"
+                template_path2 = BASE_DIR / "assets" / "pais" / f"{consumed[1]}.png"
+                click_button(window, merge_chi_pairs(template_path1, template_path2))
             return success
         except Exception as e:
             logger.error(f"Failed to click action {action}: ", e)
