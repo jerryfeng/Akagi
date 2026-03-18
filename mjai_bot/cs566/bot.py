@@ -157,7 +157,7 @@ class Bot:
             
             # 2. skip if already in Riichi
             if etype == "tsumo" and rs.riichi[self.player_id]:
-                return None
+                return { "type": "skip", "actor": self.player_id }
 
             # 3. Riichi -- model-based decision
             if etype == "tsumo" and rs.can_riichi(self.player_id):

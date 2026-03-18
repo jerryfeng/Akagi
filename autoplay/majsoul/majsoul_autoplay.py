@@ -66,6 +66,8 @@ def click_button(window, template, retry=True):
     # time.sleep(random.uniform(0.0, 3.0))
 
     left, top, right, bottom = win32gui.GetWindowRect(window.hwnd)
+    # everything we want to click is in bottom half of the screen
+    top = (top + bottom) // 2
     region = {"top": top, "left": left, "width": right - left, "height": bottom - top}
     frame = grab_region(region)
 
@@ -95,8 +97,7 @@ def click_button(window, template, retry=True):
         pyautogui.click()
         time.sleep(0.5)
         xmid = (left + right) / 2
-        ymid = (top + bottom) / 2
-        pyautogui.moveTo(xmid, ymid, duration=0.5)
+        pyautogui.moveTo(xmid, top, duration=0.5)
         return True
     else:
         return False
@@ -132,8 +133,8 @@ def merge_templates_horiz(img_a, img_b, gap=0):
 def merge_chi_pairs(template1_path, template2_path):
     template1 = cv2.imread(str(template1_path), cv2.IMREAD_COLOR)
     template2 = cv2.imread(str(template2_path), cv2.IMREAD_COLOR)
-    template1_small = resize_template(template1, 0.7)
-    template2_small = resize_template(template2, 0.7)
+    template1_small = resize_template(template1, 0.8)
+    template2_small = resize_template(template2, 0.8)
     merged = merge_templates_horiz(template1_small, template2_small, gap=2)
     return merged
 
@@ -189,13 +190,12 @@ class MajsoulAutoPlay():
             if action in ["daiminkan", "kakan", "ankan"]:
                 action = "kan"
             template_path = BASE_DIR / "assets" / "actions" / f"{action}.png"
-            template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
-            success = click_button(window, template)
-            if not success and action == "hora":
+            if action == "hora" and mjai_msg["actor"] == mjai_msg["target"]:
                 # tsumo is a different button...
                 template_path = BASE_DIR / "assets" / "actions" / "hora2.png"
-                template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
-                success = click_button(window, template)
+            template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
+            success = click_button(window, template)
+            
             if success and action == "chi":
                 consumed = mjai_msg["consumed"]
                 template_path1 = BASE_DIR / "assets" / "pais" / f"{consumed[0]}.png"

@@ -127,7 +127,9 @@ class AutoPlay(object):
             self.auto_select_window()
             if not self.check_window():
                 return False
-        if mjai_msg["type"] == "dahai":
+        if mjai_msg["type"] == "skip":
+            return True
+        elif mjai_msg["type"] == "dahai":
             return self.autoplay_instance.click_discard(self.target_window, mjai_msg)
         elif mjai_msg["type"] in ["chi", "pon", "none", "daiminkan", "kakan", "ankan", "reach", "hora"]:
             return self.autoplay_instance.click_action(self.target_window, mjai_msg)
