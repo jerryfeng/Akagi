@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import torch
 
 
@@ -7,45 +7,23 @@ import torch
 # ============================================================
 
 HONOR_TO_IDX = {
-    "E": 27,
-    "S": 28,
-    "W": 29,
-    "N": 30,
-    "P": 31,  # white
-    "F": 32,  # green
-    "C": 33,  # red
+    "E": 27, "S": 28, "W": 29, "N": 30,
+    "P": 31, "F": 32, "C": 33,
 }
-
 IDX_TO_HONOR = {v: k for k, v in HONOR_TO_IDX.items()}
-
 BAKAZE_MAP = {"E": 0, "S": 1, "W": 2, "N": 3}
 
 
 def pai_to_idx(pai: str) -> int:
-    """
-    mjai tile string -> 34 tile index
-
-    1m..9m => 0..8
-    1p..9p => 9..17
-    1s..9s => 18..26
-    E,S,W,N,P,F,C => 27..33
-
-    Red fives (0m/0p/0s or 5mr/5pr/5sr) mapped to same index as 5m/5p/5s.
-    """
     if pai in HONOR_TO_IDX:
         return HONOR_TO_IDX[pai]
-
-    # handle red five notation like "5mr", "5pr", "5sr"
     if len(pai) == 3 and pai[2] == "r":
         pai = pai[:2]
-
     if len(pai) != 2:
         raise ValueError(f"Invalid pai: {pai}")
-
     num, suit = pai[0], pai[1]
-    if num == "0":  # aka red five
+    if num == "0":
         num = "5"
-
     n = int(num)
     if suit == "m":
         return n - 1
@@ -58,7 +36,6 @@ def pai_to_idx(pai: str) -> int:
 
 
 def idx_to_pai(idx: int) -> str:
-    """34 tile index -> non-red mjai tile string."""
     if 0 <= idx <= 8:
         return f"{idx + 1}m"
     if 9 <= idx <= 17:
@@ -71,26 +48,113 @@ def idx_to_pai(idx: int) -> str:
 
 
 # ============================================================
+# Win / tenpai detection
+# ============================================================
+
+def _is_winning_counts(counts: List[int], meld_count: int = 0) -> bool:
+    expected_total = 14 - 3 * meld_count
+    total = sum(counts)
+    if total != expected_total:
+        return False
+
+    # Chiitoitsu / Kokushi only possible with no melds
+    if meld_count == 0:
+        if sum(1 for c in counts if c == 2) == 7:
+            return True
+
+        terminals = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33]
+        if all(counts[t] >= 1 for t in terminals):
+            has_pair = any(counts[t] >= 2 for t in terminals)
+            if has_pair:
+                non_terminal_count = sum(
+                    counts[i] for i in range(34) if i not in terminals
+                )
+                if non_terminal_count == 0:
+                    return True
+
+    return _check_standard_win(counts[:], meld_count)
+
+
+def _check_standard_win(counts: List[int], meld_count: int = 0) -> bool:
+    needed_mentsu = 4 - meld_count
+    if needed_mentsu < 0:
+        return False
+
+    for pair_idx in range(34):
+        if counts[pair_idx] < 2:
+            continue
+        counts[pair_idx] -= 2
+        if _remove_mentsu(counts, needed_mentsu):
+            counts[pair_idx] += 2
+            return True
+        counts[pair_idx] += 2
+    return False
+
+
+def _remove_mentsu(counts: List[int], needed: int) -> bool:
+    if needed == 0:
+        return all(c == 0 for c in counts)
+
+    for i in range(34):
+        if counts[i] > 0:
+            break
+    else:
+        return False
+
+    if counts[i] >= 3:
+        counts[i] -= 3
+        if _remove_mentsu(counts, needed - 1):
+            counts[i] += 3
+            return True
+        counts[i] += 3
+
+    if i < 27:
+        suit_pos = i % 9
+        if suit_pos <= 6:
+            if counts[i] >= 1 and counts[i + 1] >= 1 and counts[i + 2] >= 1:
+                counts[i] -= 1
+                counts[i + 1] -= 1
+                counts[i + 2] -= 1
+                if _remove_mentsu(counts, needed - 1):
+                    counts[i] += 1
+                    counts[i + 1] += 1
+                    counts[i + 2] += 1
+                    return True
+                counts[i] += 1
+                counts[i + 1] += 1
+                counts[i + 2] += 1
+
+    return False
+
+
+def is_winning_hand(counts: List[int], meld_count: int = 0) -> bool:
+    return _is_winning_counts(counts[:], meld_count)
+
+
+def is_tenpai(counts: List[int], meld_count: int = 0) -> Tuple[bool, List[int]]:
+    expected_total = 13 - 3 * meld_count
+    assert sum(counts) == expected_total, (
+        f"Expected {expected_total} tiles with meld_count={meld_count}, "
+        f"got {sum(counts)}"
+    )
+
+    waiting = []
+    for tile in range(34):
+        if counts[tile] >= 4:
+            continue
+        counts[tile] += 1
+        if _is_winning_counts(counts, meld_count):
+            waiting.append(tile)
+        counts[tile] -= 1
+
+    return len(waiting) > 0, waiting
+
+
+# ============================================================
 # Enhanced game state tracker — 16-channel features
 # ============================================================
 
 class ToyRoundState:
-    """
-    Enhanced state tracker.
-
-    16-channel feature layout:
-        0     : own hand counts
-        1     : own discards
-        2-4   : opponents' discards (shimocha, toimen, kamicha)
-        5     : dora indicators (one-hot)
-        6-8   : opponents' riichi status (broadcast 0/1)
-        9     : own riichi status (broadcast 0/1)
-        10    : round wind / bakaze (broadcast, normalized)
-        11    : seat wind / jikaze (broadcast, normalized)
-        12    : turn number / junme (broadcast, normalized 0-1)
-        13-15 : opponents' open melds (tiles exposed via chi/pon/kan)
-    """
-
     NUM_FEATURE_CHANNELS = 16
 
     def __init__(self):
@@ -109,9 +173,10 @@ class ToyRoundState:
         self.scores: List[int] = [25000] * 4
         self.last_draw: List[Optional[str]] = [None] * 4
 
-        # new tracked state
         self.junme: int = 0
         self.melds: List[List[int]] = [[0] * 34 for _ in range(4)]
+        self.meld_count: List[int] = [0, 0, 0, 0]
+        self.has_called: List[bool] = [False, False, False, False]
 
     def start_kyoku(self, event: dict):
         self.discards = [[0] * 34 for _ in range(4)]
@@ -127,6 +192,8 @@ class ToyRoundState:
 
         self.junme = 0
         self.melds = [[0] * 34 for _ in range(4)]
+        self.meld_count = [0, 0, 0, 0]
+        self.has_called = [False, False, False, False]
 
         self.hands = [[] for _ in range(4)]
         for pid in range(4):
@@ -141,17 +208,88 @@ class ToyRoundState:
             counts[pai_to_idx(pai)] += 1
         return counts
 
+    def legal_discard_mask(self, actor: int) -> torch.Tensor:
+        counts = self.hand_counts(actor)
+        return torch.tensor([c > 0 for c in counts], dtype=torch.bool)
+
+    def is_menzen(self, actor: int) -> bool:
+        return not self.has_called[actor]
+
+    def check_tsumo_agari(self, actor: int) -> bool:
+        counts = self.hand_counts(actor)
+        return is_winning_hand(counts, self.meld_count[actor])
+
+    def check_ron(self, actor: int, pai: str) -> bool:
+        counts = self.hand_counts(actor)
+        tile_idx = pai_to_idx(pai)
+        if counts[tile_idx] >= 4:
+            return False
+        counts[tile_idx] += 1
+        return is_winning_hand(counts, self.meld_count[actor])
+
+    def check_tenpai(self, actor: int) -> Tuple[bool, List[int]]:
+        counts = self.hand_counts(actor)
+        expected_total = 13 - 3 * self.meld_count[actor]
+        if sum(counts) != expected_total:
+            return False, []
+        return is_tenpai(counts, self.meld_count[actor])
+
+    def can_riichi(self, actor: int) -> bool:
+        if self.riichi[actor]:
+            return False
+        if not self.is_menzen(actor):
+            return False
+        if self.scores[actor] < 1000:
+            return False
+
+        counts = self.hand_counts(actor)
+        meld_count = self.meld_count[actor]
+
+        draw_total = 14 - 3 * meld_count
+        no_draw_total = 13 - 3 * meld_count
+
+        if sum(counts) == draw_total:
+            return self._has_tenpai_discard(counts, meld_count)
+        elif sum(counts) == no_draw_total:
+            tenpai, _ = is_tenpai(counts, meld_count)
+            return tenpai
+        return False
+
+    def _has_tenpai_discard(self, counts: List[int], meld_count: int) -> bool:
+        for i in range(34):
+            if counts[i] > 0:
+                counts[i] -= 1
+                tenpai, _ = is_tenpai(counts, meld_count)
+                counts[i] += 1
+                if tenpai:
+                    return True
+        return False
+
+    def find_riichi_discards(self, actor: int) -> List[int]:
+        counts = self.hand_counts(actor)
+        meld_count = self.meld_count[actor]
+        expected_total = 14 - 3 * meld_count
+        if sum(counts) != expected_total:
+            return []
+
+        valid = []
+        for i in range(34):
+            if counts[i] > 0:
+                counts[i] -= 1
+                tenpai, _ = is_tenpai(counts, meld_count)
+                counts[i] += 1
+                if tenpai:
+                    valid.append(i)
+        return valid
+
     # ----------------------------------------------------------
     # Event handlers
     # ----------------------------------------------------------
     def on_tsumo(self, event: dict):
         actor = event["actor"]
         pai = event["pai"]
-
-        # track junme: increment when oya draws
         if actor == self.oya:
             self.junme += 1
-
         if pai != "?":
             self.hands[actor].append(pai)
             self.last_draw[actor] = pai
@@ -179,7 +317,6 @@ class ToyRoundState:
         self.dora_indicators.append(pai_to_idx(event["dora_marker"]))
 
     def _apply_meld(self, actor: int, consumed: List[str], called_pai: Optional[str] = None):
-        """Common logic for chi / pon / daiminkan: move tiles to meld zone."""
         for t in consumed:
             idx = pai_to_idx(t)
             self.melds[actor][idx] += 1
@@ -188,16 +325,26 @@ class ToyRoundState:
             self.melds[actor][pai_to_idx(called_pai)] += 1
 
     def on_chi(self, event: dict):
-        self._apply_meld(event["actor"], event.get("consumed", []), event.get("pai"))
+        actor = event["actor"]
+        self.has_called[actor] = True
+        self.meld_count[actor] += 1
+        self._apply_meld(actor, event.get("consumed", []), event.get("pai"))
 
     def on_pon(self, event: dict):
-        self._apply_meld(event["actor"], event.get("consumed", []), event.get("pai"))
+        actor = event["actor"]
+        self.has_called[actor] = True
+        self.meld_count[actor] += 1
+        self._apply_meld(actor, event.get("consumed", []), event.get("pai"))
 
     def on_daiminkan(self, event: dict):
-        self._apply_meld(event["actor"], event.get("consumed", []), event.get("pai"))
+        actor = event["actor"]
+        self.has_called[actor] = True
+        self.meld_count[actor] += 1
+        self._apply_meld(actor, event.get("consumed", []), event.get("pai"))
 
     def on_ankan(self, event: dict):
         actor = event["actor"]
+        self.meld_count[actor] += 1
         for t in event.get("consumed", []):
             idx = pai_to_idx(t)
             self.melds[actor][idx] += 1
@@ -210,10 +357,10 @@ class ToyRoundState:
             idx = pai_to_idx(pai)
             self.melds[actor][idx] += 1
             self._remove_one_tile(self.hands[actor], pai)
+        # no meld_count += 1 here; this upgrades an existing pon
 
     def apply_event(self, event: dict):
         t = event["type"]
-
         if t == "start_kyoku":
             self.start_kyoku(event)
         elif t == "tsumo":
@@ -247,68 +394,52 @@ class ToyRoundState:
     def to_feature(self, actor: int) -> torch.Tensor:
         x = torch.zeros(self.NUM_FEATURE_CHANNELS, 34, dtype=torch.float32)
 
-        # relative opponent seats
         opponents = [
-            (actor + 1) % 4,  # shimocha (下家)
-            (actor + 2) % 4,  # toimen   (対面)
-            (actor + 3) % 4,  # kamicha  (上家)
+            (actor + 1) % 4,
+            (actor + 2) % 4,
+            (actor + 3) % 4,
         ]
 
-        # plane 0: own hand counts
         hand_cnts = self.hand_counts(actor)
         for i in range(34):
             x[0, i] = float(hand_cnts[i])
 
-        # plane 1: own discards
         for i in range(34):
             x[1, i] = float(self.discards[actor][i])
 
-        # plane 2-4: opponents' discards
         for off, other in enumerate(opponents):
             for i in range(34):
                 x[2 + off, i] = float(self.discards[other][i])
 
-        # plane 5: dora indicators
         for idx in self.dora_indicators:
             x[5, idx] = 1.0
 
-        # plane 6-8: opponents' riichi
         for off, other in enumerate(opponents):
             x[6 + off, :] = float(self.riichi[other])
 
-        # plane 9: own riichi
         x[9, :] = float(self.riichi[actor])
 
-        # plane 10: round wind (bakaze), normalized
         bakaze_val = (BAKAZE_MAP.get(self.bakaze, 0) + 1) / 4.0
         x[10, :] = bakaze_val
 
-        # plane 11: seat wind (jikaze), normalized
         jikaze = (actor - self.oya) % 4
         jikaze_val = (jikaze + 1) / 4.0
         x[11, :] = jikaze_val
 
-        # plane 12: turn number, normalized (max ~18 turns)
         x[12, :] = min(self.junme / 18.0, 1.0)
 
-        # plane 13-15: opponents' open melds
         for off, other in enumerate(opponents):
             for i in range(34):
                 x[13 + off, i] = float(self.melds[other][i])
 
         return x
 
-    # ----------------------------------------------------------
-    # Bot helper
-    # ----------------------------------------------------------
     def choose_discard_tile(self, actor: int, idx: int) -> str:
         if self.last_draw[actor] is not None and pai_to_idx(self.last_draw[actor]) == idx:
             return self.last_draw[actor]
-
         for pai in self.hands[actor]:
             if pai_to_idx(pai) == idx:
                 return pai
-
         return idx_to_pai(idx)
 
     @staticmethod
@@ -322,3 +453,9 @@ class ToyRoundState:
             if pai_to_idx(t) == target_idx:
                 del hand[i]
                 return
+
+        raise ValueError(
+            f"Failed to remove tile {pai} from hand {hand}. "
+            f"State desynced from log."
+        )
+    

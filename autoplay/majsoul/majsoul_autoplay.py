@@ -61,9 +61,9 @@ def group_points(points, distance=12):
             groups.append([float(x), float(y), 1])
     return [(int(gx), int(gy)) for gx, gy, _ in groups]
 
-def click_button(window, template):
+def click_button(window, template, retry=True):
     # Sleep random amount of time so that we look slightly less like a bot
-    time.sleep(random.uniform(0.0, 3.0))
+    # time.sleep(random.uniform(0.0, 3.0))
 
     left, top, right, bottom = win32gui.GetWindowRect(window.hwnd)
     region = {"top": top, "left": left, "width": right - left, "height": bottom - top}
@@ -74,10 +74,13 @@ def click_button(window, template):
     
     # Tenhou event is faster than game UI update. The tile might not be visible yet
     # Sleep and retries once to ensure we don't miss this case
-    if not boxes:
+    # this should also cover the dora affecting recognition case
+    i = 0
+    while not boxes and retry and i < 3:
         time.sleep(2)
         frame = grab_region(region)
-        boxes = find_template_all(frame, template, threshold=0.80)
+        boxes = find_template_all(frame, template, threshold=0.80 - i * 0.1)
+        i += 1
 
     if boxes:
         x1, y1, x2, y2 = boxes[0]
@@ -87,13 +90,13 @@ def click_button(window, template):
         y2 += top
         xc = (x1 + x2) // 2
         yc = (y1 + y2) // 2
-        pyautogui.moveTo(xc, yc, duration=1)
+        pyautogui.moveTo(xc, yc, duration=0.5)
         time.sleep(0.5)
         pyautogui.click()
         time.sleep(0.5)
         xmid = (left + right) / 2
         ymid = (top + bottom) / 2
-        pyautogui.moveTo(xmid, ymid, duration=1)
+        pyautogui.moveTo(xmid, ymid, duration=0.5)
         return True
     else:
         return False
@@ -179,7 +182,7 @@ class MajsoulAutoPlay():
             return False
     
     def click_action(self, window: WindowObject, mjai_msg):
-        action = mjai_msg["action"]
+        action = mjai_msg["type"]
         if action not in VALID_ACTIONS:
             return False
         try:
@@ -197,7 +200,9 @@ class MajsoulAutoPlay():
                 consumed = mjai_msg["consumed"]
                 template_path1 = BASE_DIR / "assets" / "pais" / f"{consumed[0]}.png"
                 template_path2 = BASE_DIR / "assets" / "pais" / f"{consumed[1]}.png"
-                click_button(window, merge_chi_pairs(template_path1, template_path2))
+                click_button(window, merge_chi_pairs(template_path1, template_path2), retry=False)
+            if success and action == "reach":
+                self.click_discard(window, mjai_msg)
             return success
         except Exception as e:
             logger.error(f"Failed to click action {action}: ", e)
