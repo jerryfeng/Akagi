@@ -320,7 +320,8 @@ class ToyRoundState:
         for t in consumed:
             idx = pai_to_idx(t)
             self.melds[actor][idx] += 1
-            self._remove_one_tile(self.hands[actor], t)
+            if self.hands[actor]:
+                self._remove_one_tile(self.hands[actor], t)
         if called_pai:
             self.melds[actor][pai_to_idx(called_pai)] += 1
 

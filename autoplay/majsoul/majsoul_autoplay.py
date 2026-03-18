@@ -61,7 +61,7 @@ def group_points(points, distance=12):
             groups.append([float(x), float(y), 1])
     return [(int(gx), int(gy)) for gx, gy, _ in groups]
 
-def click_button(window, template, retry=True):
+def click_button(window, template, retry=True, isHaku=False):
     # Sleep random amount of time so that we look slightly less like a bot
     # time.sleep(random.uniform(0.0, 3.0))
 
@@ -71,7 +71,7 @@ def click_button(window, template, retry=True):
     region = {"top": top, "left": left, "width": right - left, "height": bottom - top}
     frame = grab_region(region)
 
-    boxes = find_template_all(frame, template, threshold=0.90)
+    boxes = find_template_all(frame, template, threshold=0.90, isHaku=isHaku)
     # logger.debug(boxes)
     
     # Tenhou event is faster than game UI update. The tile might not be visible yet
@@ -81,7 +81,7 @@ def click_button(window, template, retry=True):
     while not boxes and retry and i < 3:
         time.sleep(2)
         frame = grab_region(region)
-        boxes = find_template_all(frame, template, threshold=0.80 - i * 0.1)
+        boxes = find_template_all(frame, template, threshold=0.80 - i * 0.1, isHaku=isHaku)
         i += 1
 
     if boxes:
@@ -138,13 +138,15 @@ def merge_chi_pairs(template1_path, template2_path):
     merged = merge_templates_horiz(template1_small, template2_small, gap=2)
     return merged
 
-def find_template_all(frame, template, threshold=0.88):
+def find_template_all(frame, template, threshold=0.88, isHaku=False):
     """
     Returns list of bounding boxes: [(x1, y1, x2, y2), ...]
     coordinates are relative to frame
     """
-    result = cv2.matchTemplate(frame, template, cv2.TM_CCOEFF_NORMED)
-    ys, xs = np.where(result >= threshold)
+    templateMatchMode = cv2.TM_SQDIFF_NORMED if isHaku else cv2.TM_CCOEFF_NORMED
+
+    result = cv2.matchTemplate(frame, template, templateMatchMode)
+    ys, xs = np.where(result <= 0.08) if isHaku else np.where(result >= threshold)
 
     points = list(zip(xs, ys))
     points = group_points(points, distance=10)
@@ -177,7 +179,8 @@ class MajsoulAutoPlay():
         try:
             template_path = BASE_DIR / "assets" / "pais" / f"{pai}.png"
             template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
-            return click_button(window, template)
+            isHaku = True if pai == "P" else False
+            return click_button(window, template, isHaku=isHaku)
         except Exception as e:
             logger.error(f"Failed to click discard {pai}: ", e)
             return False
