@@ -283,6 +283,9 @@ class Bot:
                 maybe = self._maybe_act(e)
                 if maybe is not None:
                     return_action = maybe
+            
+            if t == "reach_accepted":
+                return_action = { "type": "skip", "actor": self.player_id }
 
         if return_action is None:
             return json.dumps({"type": "none"}, separators=(",", ":"))

@@ -65,6 +65,9 @@ def click_button(window, template, retry=True, isHaku=False):
     # Sleep random amount of time so that we look slightly less like a bot
     # time.sleep(random.uniform(0.0, 3.0))
 
+    if isHaku:
+        time.sleep(2)
+
     left, top, right, bottom = win32gui.GetWindowRect(window.hwnd)
     # everything we want to click is in bottom half of the screen
     top = (top + bottom) // 2
@@ -198,6 +201,10 @@ class MajsoulAutoPlay():
                 template_path = BASE_DIR / "assets" / "actions" / "hora2.png"
             template = cv2.imread(str(template_path), cv2.IMREAD_COLOR)
             success = click_button(window, template)
+
+            if action != "none":
+                # sleep briefly to wait for potential delayed UI update
+                time.sleep(2)
             
             if success and action == "chi":
                 consumed = mjai_msg["consumed"]
