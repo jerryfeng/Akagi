@@ -1,3 +1,5 @@
+import time
+
 from autoplay.majsoul.majsoul_autoplay import MajsoulAutoPlay
 
 from .logger import logger
@@ -127,8 +129,15 @@ class AutoPlay(object):
             self.auto_select_window()
             if not self.check_window():
                 return False
-        if mjai_msg["type"] == "skip":
+        if "skip_play" in mjai_msg:
             return True
+        if "first_action" in mjai_msg:
+            time.sleep(8)
+
+        if mjai_msg["type"] == "start_game":
+            return self.autoplay_instance.start_game()
+        elif mjai_msg["type"] == "end_game":
+            return self.autoplay_instance.end_game(self.target_window)
         elif mjai_msg["type"] == "dahai":
             return self.autoplay_instance.click_discard(self.target_window, mjai_msg)
         elif mjai_msg["type"] in ["chi", "pon", "none", "daiminkan", "kakan", "ankan", "reach", "hora"]:
