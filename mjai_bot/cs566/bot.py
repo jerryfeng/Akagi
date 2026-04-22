@@ -43,7 +43,7 @@ DAHAI_CONF_THRESHOLDS = {
     1: 0.75,  # chi_low
     2: 0.75,  # chi_mid
     3: 0.75,  # chi_high
-    4: 0.68,  # pon
+    4: 0.73,  # pon
     5: 0.90,  # kan / daiminkan
 }
 
@@ -322,11 +322,11 @@ class Bot:
         counts34 = self.round_state.hand_counts_base34(self.player_id)
 
         if self.round_state.has_pon_meld(self.player_id, base34) and counts34[base34] >= 1:
-            pai = self.round_state.choose_discard_tile(self.player_id, idx37)
             return {
                 "type": "kakan",
                 "actor": self.player_id,
-                "pai": pai,
+                "pai": idx_to_pai(idx37),
+                "consumed": [idx_to_pai(idx37)],
             }
 
         if counts34[base34] >= 4:
@@ -441,12 +441,14 @@ class Bot:
             pai = self.round_state.last_draw[self.player_id]
             if pai is None:
                 pai = idx_to_pai(self._choose_tile_from_mask(tile_logits, discard_mask))
+            idx37 = self._choose_tile_from_mask(tile_logits, reach_mask)
             return {
                 "type": "hora",
                 "actor": self.player_id,
                 "target": self.player_id,
                 "pai": pai,
                 "meta": meta,
+                "default_pai": pai
             }
 
         if self.round_state.riichi[self.player_id]:

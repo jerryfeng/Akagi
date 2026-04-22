@@ -63,11 +63,17 @@ def group_points(points, distance=12):
 
 
 def click_button(window, template, retry=True, isHaku=False):
+    # Sleep random amount of time so that we look slightly less like a bot
+    time.sleep(max(min(0.0, random.gauss(1.5, 0.5)), 3.0))
+
     if isHaku:
-        time.sleep(2)
+        time.sleep(1)
 
     left, top, right, bottom = win32gui.GetWindowRect(window.hwnd)
     top = (top + bottom) // 2
+    if isHaku:
+        # haku is so easy to matched wrong;
+        top = (top + bottom) // 2
     region = {"top": top, "left": left, "width": right - left, "height": bottom - top}
     frame = grab_region(region)
 
@@ -337,6 +343,7 @@ class MajsoulAutoPlay():
 
     def start_game(self):
         time.sleep(8)
+        return True
 
     def end_game(self, window: WindowObject):
         try:
@@ -387,7 +394,6 @@ class MajsoulAutoPlay():
 
     def click_discard(self, window: WindowObject, mjai_msg):
         pai = mjai_msg["pai"]
-        time.sleep(1)
         if pai not in VALID_PAI:
             return False
         try:
@@ -401,7 +407,7 @@ class MajsoulAutoPlay():
 
     def click_action(self, window: WindowObject, mjai_msg):
         action = mjai_msg["type"]
-        time.sleep(2)
+        time.sleep(1)
         if action not in VALID_ACTIONS:
             return False
         try:
@@ -414,14 +420,23 @@ class MajsoulAutoPlay():
             success = click_button(window, template)
 
             if action != "none":
-                time.sleep(2)
+                time.sleep(1)
 
             if success and action == "chi":
                 consumed = mjai_msg["consumed"]
                 if mjai_msg["chi_count"] > 1:
                     success = click_chi_pair(window, consumed)
             if success and action == "reach":
-                self.click_discard(window, mjai_msg)
+                success = self.click_discard(window, mjai_msg)
+            
+            if action == "hora" and not success:
+                # we thought we could hora, but we are in furiten or lack of yaku
+                if mjai_msg["default_pai"] is not None:
+                    mjai_msg["pai"] = mjai_msg["default_pai"]
+                    success = self.click_discard(window, mjai_msg)
+                else:
+                    mjai_msg["type"] = "none"
+                    success = self.click_action(window, mjai_msg)
             return success
         except Exception as e:
             logger.error(f"Failed to click action {action}: {e}")

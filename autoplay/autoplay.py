@@ -132,7 +132,7 @@ class AutoPlay(object):
         if "skip_play" in mjai_msg:
             return True
         if "first_action" in mjai_msg:
-            time.sleep(8)
+            time.sleep(5)
 
         if mjai_msg["type"] == "start_game":
             return self.autoplay_instance.start_game()
